@@ -198,19 +198,21 @@ static double const UndefinedFPS = -1.0;
     {
         current_video_fps = UndefinedFPS;
         cpp_demuxer.demux_file([[inputAsset.url path] UTF8String], &current_video_fps);
-        if(current_video_fps == UndefinedFPS)
-        {
-            self.error = [NSError errorWithDomain:KMMediaAssetExportSessionErrorDomain code:KMMediaAssetExportSessionErrorCodeDemuxOperationFailed userInfo:@{NSLocalizedDescriptionKey:@"The FPS of the video stream couldn't be retrieved."}];
-            self.status = KMMediaAssetExportSessionStatusFailed;
-            return UndefinedFPS;
-        }
-        if(previous_video_fps != UndefinedFPS && previous_video_fps != current_video_fps)
-        {
-            self.error = [NSError errorWithDomain:KMMediaAssetExportSessionErrorDomain code:KMMediaAssetExportSessionErrorCodeDemuxOperationFailed userInfo:@{NSLocalizedDescriptionKey:@"All video elementary stream are not at the same FPS."}];
-            self.status = KMMediaAssetExportSessionStatusFailed;
-            return UndefinedFPS;
-        }
-        previous_video_fps = current_video_fps;
+        
+        // TODO:  Meerkats can throw errors here...not sure why, hardcording to 30fps for now
+//        if(current_video_fps == UndefinedFPS)
+//        {
+//            self.error = [NSError errorWithDomain:KMMediaAssetExportSessionErrorDomain code:KMMediaAssetExportSessionErrorCodeDemuxOperationFailed userInfo:@{NSLocalizedDescriptionKey:@"The FPS of the video stream couldn't be retrieved."}];
+//            self.status = KMMediaAssetExportSessionStatusFailed;
+//            return UndefinedFPS;
+//        }
+//        if(previous_video_fps != UndefinedFPS && previous_video_fps != current_video_fps)
+//        {
+//            self.error = [NSError errorWithDomain:KMMediaAssetExportSessionErrorDomain code:KMMediaAssetExportSessionErrorCodeDemuxOperationFailed userInfo:@{NSLocalizedDescriptionKey:@"All video elementary stream are not at the same FPS."}];
+//            self.status = KMMediaAssetExportSessionStatusFailed;
+//            return UndefinedFPS;
+//        }
+        previous_video_fps = 30.0;//current_video_fps;
     }
     return current_video_fps;
 }
@@ -231,6 +233,8 @@ static double const UndefinedFPS = -1.0;
         
         NSString *audioElementaryStreamFileName = [audioElementaryStreamFiles firstObject];
         
+        
+        
         /*
          Retrieve video elementary stream file
          */
@@ -248,6 +252,16 @@ static double const UndefinedFPS = -1.0;
             
             NSString *outputAudioElementaryStreamFilePath = (audioElementaryStreamFileName)?[NSString stringWithFormat:@"%@/%@",[inputMuxDirectoryURL path],audioElementaryStreamFileName]:@"";
             NSString *outputVideoElementaryStreamFilePath = (videoElementaryStreamFileName)?[NSString stringWithFormat:@"%@/%@",[inputMuxDirectoryURL path],videoElementaryStreamFileName]:@"";
+            
+
+            
+            // HUUUUUGE HACK -- basically gets Meerkat streams back in a/v sync cause i think the stream presentation time is wrong?
+            // I just copy 18k of bytes OVER again, and it pushes back the audio JUST enough to sync video.  Trial and error got me here.  Like I said, HUGE HACK.
+            NSMutableData *audioData = [[NSFileManager defaultManager] contentsAtPath:outputAudioElementaryStreamFilePath].mutableCopy;
+            NSData* beginningAudio = [audioData subdataWithRange:NSMakeRange(0, 18432)];
+            [audioData replaceBytesInRange:NSMakeRange(0, 0) withBytes:beginningAudio.bytes length:18432];
+            [audioData writeToFile:outputAudioElementaryStreamFilePath atomically:YES];
+            
             
             assemble_elementary_streams((char *)[outputVideoElementaryStreamFilePath UTF8String], (char *)[outputAudioElementaryStreamFilePath UTF8String], (char *)[[outputAsset.url path ] UTF8String], video_stream_fps);
             
